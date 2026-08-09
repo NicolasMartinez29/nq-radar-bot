@@ -1,0 +1,7 @@
+name = "nq-radar-bot1"
+main = "worker.js"
+compatibility_date = "2026-08-09"
+
+[[kv_namespaces]]
+binding = "NQ_STATE"
+id = "REPLACE_WITH_YOUR_NEW_NQ_KV_NAMESPACE_ID"

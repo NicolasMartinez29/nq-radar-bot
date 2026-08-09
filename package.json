@@ -1,0 +1,13 @@
+{
+  "name": "nq-radar-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NQ RADAR V1 \u2014 Cloudflare Worker + TradingView + Telegram paper trading engine",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

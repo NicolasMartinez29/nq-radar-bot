@@ -110,6 +110,17 @@ export default {
         return json(runSelfTest());
       }
 
+      if (url.pathname === "/debug/cron" && request.method === "GET") {
+        const diag = env.NQ_STATE ? await env.NQ_STATE.get("cronDiag", "json") : null;
+        return json({ ok: true, lastCronRun: diag || null });
+      }
+
+      if (url.pathname === "/debug/cron/run" && request.method === "GET") {
+        await runScheduledFeed(env);
+        const diag = env.NQ_STATE ? await env.NQ_STATE.get("cronDiag", "json") : null;
+        return json({ ok: true, triggeredManually: true, lastCronRun: diag || null });
+      }
+
       if (url.pathname === "/setup" && request.method === "GET") {
         return await setupTelegramWebhook(request, env);
       }
@@ -139,12 +150,7 @@ export default {
   // Polls Yahoo Finance's public NQ=F chart feed on a Cron Trigger instead of
   // waiting on a TradingView webhook. No external service, no signup, no cost.
   async scheduled(event, env, ctx) {
-    try {
-      const candle = await fetchLatestYahooCandle();
-      if (candle) await ingestCandle(env, candle);
-    } catch (error) {
-      console.error("SCHEDULED FEED ERROR", safeError(error));
-    }
+    await runScheduledFeed(env);
   }
 };
 
@@ -373,6 +379,30 @@ async function fetchLatestYahooCandle() {
   }
 
   return null;
+}
+
+async function runScheduledFeed(env) {
+  const diag = { at: Date.now(), ok: false, error: null, candleTime: null };
+
+  try {
+    const candle = await fetchLatestYahooCandle();
+
+    if (candle) {
+      diag.candleTime = candle.time;
+      await ingestCandle(env, candle);
+    } else {
+      diag.error = "No aligned 1m candle found in Yahoo response";
+    }
+
+    diag.ok = true;
+  } catch (error) {
+    diag.error = safeError(error);
+    console.error("SCHEDULED FEED ERROR", diag.error);
+  }
+
+  if (env.NQ_STATE) {
+    await env.NQ_STATE.put("cronDiag", JSON.stringify(diag));
+  }
 }
 
 async function ingestCandle(env, rawCandle) {

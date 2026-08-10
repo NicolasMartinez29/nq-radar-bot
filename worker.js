@@ -298,9 +298,11 @@ async function handleFeed(request, env) {
 
   await saveState(env, state);
 
-  if (state.active && state.chatId) {
+  if (state.active && state.chatIds.length) {
     for (const event of result.events) {
-      await sendEventToTelegram(env, state.chatId, event, state);
+      for (const chatId of state.chatIds) {
+        await sendEventToTelegram(env, chatId, event, state);
+      }
     }
   }
 
@@ -414,9 +416,11 @@ async function ingestCandle(env, rawCandle) {
 
   await saveState(env, state);
 
-  if (state.active && state.chatId) {
+  if (state.active && state.chatIds.length) {
     for (const event of result.events) {
-      await sendEventToTelegram(env, state.chatId, event, state);
+      for (const chatId of state.chatIds) {
+        await sendEventToTelegram(env, chatId, event, state);
+      }
     }
   }
 
@@ -1444,7 +1448,7 @@ async function handleTelegram(request, env) {
 
   if (command === "/start") {
     state.active = true;
-    state.chatId = chatId;
+    if (!state.chatIds.includes(chatId)) state.chatIds.push(chatId);
     await saveState(env, state);
 
     await sendTelegram(env, chatId, [
@@ -1476,7 +1480,6 @@ async function handleTelegram(request, env) {
 
   if (command === "/stop") {
     state.active = false;
-    state.chatId = chatId;
     await saveState(env, state);
     await sendTelegram(env, chatId, "🛑 NQ PREDATOR DETENIDO 🔴\n\nFeed can continue, but no new paper trades open while stopped.");
     return json({ ok: true });
@@ -2163,6 +2166,7 @@ function defaultState() {
   return {
     active: false,
     chatId: null,
+    chatIds: [],
 
     balance: CONFIG.STARTING_BALANCE,
     highWaterBalance: CONFIG.STARTING_BALANCE,
@@ -2209,8 +2213,13 @@ function hydrateState(saved) {
     orb: { ...base.orb, ...(saved?.orb || {}) }
   };
 
-  for (const key of ["candles", "signals", "openTrades", "closedTrades", "forecasts", "equityCurve"]) {
+  for (const key of ["candles", "signals", "openTrades", "closedTrades", "forecasts", "equityCurve", "chatIds"]) {
     if (!Array.isArray(state[key])) state[key] = [];
+  }
+
+  // Migrate the old single-chatId field into the multi-user list.
+  if (state.chatId && !state.chatIds.includes(state.chatId)) {
+    state.chatIds.push(state.chatId);
   }
 
   if (!state.todVolumeProfile || typeof state.todVolumeProfile !== "object") {

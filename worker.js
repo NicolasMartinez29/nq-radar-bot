@@ -138,6 +138,53 @@ export default {
 };
 
 // ============================================================================
+// TELEGRAM SEND
+// ============================================================================
+
+async function sendTelegram(env, chatId, text) {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    throw new Error("TELEGRAM_BOT_TOKEN secret missing");
+  }
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: String(text),
+        disable_web_page_preview: true
+      })
+    }
+  );
+
+  let result;
+
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(
+      `Telegram sendMessage returned invalid response: HTTP ${response.status}`
+    );
+  }
+
+  if (!response.ok || !result?.ok) {
+    throw new Error(
+      `Telegram sendMessage failed: ${
+        result?.description ||
+        `HTTP ${response.status}`
+      }`
+    );
+  }
+
+  return result;
+}
+// ============================================================================
 // TELEGRAM SETUP
 // ============================================================================
 

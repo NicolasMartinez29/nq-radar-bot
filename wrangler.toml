@@ -8,3 +8,6 @@ preview_urls = true
 [[kv_namespaces]]
 binding = "NQ_STATE"
 id = "22f2eaa05764422fb0fc669c1915f563"
+
+[triggers]
+crons = ["* * * * *"]

@@ -134,6 +134,17 @@ export default {
       console.error("FETCH ERROR", safeError(error));
       return json({ ok: false, error: safeError(error), version: CONFIG.VERSION }, 500);
     }
+  },
+
+  // Polls Yahoo Finance's public NQ=F chart feed on a Cron Trigger instead of
+  // waiting on a TradingView webhook. No external service, no signup, no cost.
+  async scheduled(event, env, ctx) {
+    try {
+      const candle = await fetchLatestYahooCandle();
+      if (candle) await ingestCandle(env, candle);
+    } catch (error) {
+      console.error("SCHEDULED FEED ERROR", safeError(error));
+    }
   }
 };
 
@@ -306,6 +317,80 @@ async function handleFeed(request, env) {
     openTrades: state.openTrades.length,
     tradingViewIpRecognized: true
   });
+}
+
+// ============================================================================
+// YAHOO FINANCE POLLING FEED (NO TRADINGVIEW)
+// ============================================================================
+// Free, no API key, no signup. Data runs ~10-15 min behind the live tape,
+// which is fine for a paper-trading-only bot. If Yahoo ever blocks/changes
+// this endpoint, this is the one function that needs replacing.
+
+const YAHOO_CHART_URL =
+  "https://query1.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1m&range=1d";
+
+async function fetchLatestYahooCandle() {
+  const response = await fetch(YAHOO_CHART_URL, {
+    headers: { "User-Agent": "Mozilla/5.0" }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Yahoo chart fetch failed: HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const result = data?.chart?.result?.[0];
+  const timestamps = result?.timestamp;
+  const quote = result?.indicators?.quote?.[0];
+
+  if (!Array.isArray(timestamps) || !quote) {
+    throw new Error("Yahoo chart response missing timestamp/quote data");
+  }
+
+  // Yahoo appends a partial, non-minute-aligned point for the in-progress
+  // tick; walk backwards to the last real closed 1-minute bar.
+  for (let i = timestamps.length - 1; i >= 0; i--) {
+    const t = timestamps[i];
+    if (t % 60 !== 0) continue;
+
+    const open = quote.open[i];
+    const high = quote.high[i];
+    const low = quote.low[i];
+    const close = quote.close[i];
+
+    if ([open, high, low, close].every((v) => typeof v === "number")) {
+      return {
+        symbol: "NQ",
+        timeframe: "1",
+        time: t,
+        open,
+        high,
+        low,
+        close,
+        volume: quote.volume[i] ?? 0
+      };
+    }
+  }
+
+  return null;
+}
+
+async function ingestCandle(env, rawCandle) {
+  const candle = normalizeCandle(rawCandle);
+  if (!candle) return { ok: false, error: "Invalid candle payload" };
+
+  const state = await getState(env);
+  const result = processCandle(state, candle, state.active);
+
+  await saveState(env, state);
+
+  if (state.active && state.chatId) {
+    for (const event of result.events) {
+      await sendEventToTelegram(env, state.chatId, event, state);
+    }
+  }
+
+  return { ok: true, duplicate: result.duplicate };
 }
 
 function normalizeCandle(payload) {

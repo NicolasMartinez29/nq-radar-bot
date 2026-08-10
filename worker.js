@@ -230,6 +230,16 @@ async function setupTelegramWebhook(request, env) {
 // TRADINGVIEW FEED
 // ============================================================================
 
+// Published TradingView webhook egress IPs. TradingView does not contractually
+// guarantee these stay fixed, so if /feed starts returning 403s again after a
+// working deploy, check this list against TradingView's current docs first.
+const TRADINGVIEW_WEBHOOK_IPS = new Set([
+  "52.89.214.238",
+  "34.212.75.30",
+  "54.218.53.128",
+  "52.32.178.7"
+]);
+
 async function handleFeed(request, env) {
   const connectingIp =
     request.headers.get("CF-Connecting-IP") ||
